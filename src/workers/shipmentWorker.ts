@@ -56,23 +56,24 @@ async function updateShipment(orderId: string, products: string[], status: Shipm
     }
 }
 
-const shipmentWorker = new Worker("shipmentQueue", async (job: {data: {orderId: string, products: string[]}, name: string}) => {
+const shipmentWorker = new Worker("shipmentQueue", async (job: {data: {orderId: string, products: {productId: string}[]}, name: string}) => {
     try {
         const { orderId, products } = job.data;
+        const productIds = products.map((product) => product.productId! as string);
         const name = job.name;
         switch (name) {
             case "start_shipment":
-                await createShipment(orderId, products, ShipmentStatus.PENDING);
+                await createShipment(orderId, productIds, ShipmentStatus.PENDING);
                 await shipmentQueue.add("order_shipped", {orderId, products}, {delay: 60 * 1000});
                 console.log("order_placed job completed", job.data.orderId);
                 break;
             case "order_shipped":
-                await updateShipment(orderId, products, ShipmentStatus.SHIPPED);
+                await updateShipment(orderId, productIds, ShipmentStatus.SHIPPED);
                 await shipmentQueue.add("order_delivered", {orderId, products}, {delay: 120 * 1000});
                 console.log("order_shipped job completed", job.data.orderId);
                 break;
             case "order_delivered":
-                await updateShipment(orderId, products, ShipmentStatus.DELIVERED);
+                await updateShipment(orderId, productIds, ShipmentStatus.DELIVERED);
                 console.log("order_delivered job completed", job.data.orderId);
                 break;
             default:
