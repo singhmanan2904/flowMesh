@@ -2,7 +2,19 @@ import type { FastifyInstance } from "fastify";
 import { stripeWebhookController } from "../controllers/payment.controller.js";
 
 function paymentRouter(fastify: FastifyInstance) {
-    // No auth middleware — Stripe calls this directly
+    fastify.addContentTypeParser(
+        "application/json",
+        { parseAs: "buffer" },
+        (request, body, done) => {
+            try {
+                request.rawBody = body;
+                done(null, JSON.parse(body.toString()));
+            } catch (err) {
+                done(err as Error, undefined);
+            }
+        }
+    );
+
     fastify.post("/webhook", {
         handler: stripeWebhookController,
     });

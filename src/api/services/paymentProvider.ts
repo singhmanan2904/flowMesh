@@ -20,7 +20,7 @@ export type CreateCheckoutSessionResult = {
     sessionId: string;
 };
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
+export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
 /**
  * Stripe adapter — creates a Checkout Session and returns the hosted payment URL.
@@ -58,6 +58,7 @@ export async function createCheckoutSession(
             metadata: {
                 orderId: input.orderId,
                 paymentId: input.paymentId,
+                products: JSON.stringify(input.lineItems),
             },
         });
 

@@ -1,5 +1,5 @@
 import { Job, Worker } from "bullmq";
-import { ShipmentStatus } from "../generated/prisma/enums.js";
+import { OrderStatus, ShipmentStatus } from "../generated/prisma/enums.js";
 import { prisma } from "../../lib/prismaClient.js";
 import { shipmentQueue } from "../queue/shipment.queue.js";
 
@@ -21,9 +21,34 @@ async function createShipment(orderId: string, products: string[], status: Shipm
 
 async function updateShipment(orderId: string, products: string[], status: ShipmentStatus) {
     try {
-        const shipment = await prisma.shipment.update({
-            where: { orderId },
-            data: { status },
+        const shipment = await prisma.$transaction(async (tx) => {
+            await tx.shipment.update({
+                where: { orderId },
+                data: { status },
+            });
+
+            switch (status) {
+                case ShipmentStatus.PENDING:
+                    await tx.orders.update({
+                        where: { id: orderId },
+                        data: { status: OrderStatus.SHIPPING_PENDING },
+                    });
+                    break;
+                case ShipmentStatus.SHIPPED:
+                    await tx.orders.update({
+                        where: { id: orderId },
+                        data: { status: OrderStatus.SHIPPING_COMPLETED },
+                    });
+                    break;
+                case ShipmentStatus.DELIVERED:
+                    await tx.orders.update({
+                        where: { id: orderId },
+                        data: { status: OrderStatus.COMPLETED },
+                    });
+                    break;
+                default:
+                    throw new Error("Invalid shipment status");
+            }
         });
     } catch (err) {
         console.error(`Error while updating shipment: ${err}`);
@@ -36,7 +61,7 @@ const shipmentWorker = new Worker("shipmentQueue", async (job: {data: {orderId: 
         const { orderId, products } = job.data;
         const name = job.name;
         switch (name) {
-            case "order_placed":
+            case "start_shipment":
                 await createShipment(orderId, products, ShipmentStatus.PENDING);
                 await shipmentQueue.add("order_shipped", {orderId, products}, {delay: 60 * 1000});
                 console.log("order_placed job completed", job.data.orderId);
