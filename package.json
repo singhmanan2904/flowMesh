@@ -7,7 +7,11 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "tsx watch src/server.ts",
     "worker:payment": "tsx watch src/workers/paymentWorker.ts",
-    "worker:shipment": "tsx watch src/workers/shipmentWorker.ts"
+    "worker:shipment": "tsx watch src/workers/shipmentWorker.ts",
+    "db:seed": "tsx prisma/seed.ts"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
   },
   "type": "module",
   "keywords": [],

@@ -4,6 +4,7 @@ import { createOrder } from "../services/createOrder.js";
 import { OrderStatus, PaymentStatus } from "../../generated/prisma/enums.js";
 import { createPayment } from "../services/createPayment.js";
 import { initiatePayment } from "../services/initiatePayment.js";
+import { calculateOrderTotal, ProductNotFoundError } from "../services/calculateOrderTotal.js";
 
 export const getOrderController = async function (request: FastifyRequest<{
     Headers: {
@@ -27,7 +28,6 @@ export const getOrderController = async function (request: FastifyRequest<{
 export const createOrderController = async function (request: FastifyRequest<{
     Body: {
         products: string[],
-        totalAmount: number,
     },
     Headers: {
         Authorization: string
@@ -35,7 +35,8 @@ export const createOrderController = async function (request: FastifyRequest<{
 }>, reply: FastifyReply) {
     request.log.info(`POST request processing for orders: ${request}`);
     try {
-        const { products, totalAmount } = request.body;
+        const { products } = request.body;
+        const totalAmount = await calculateOrderTotal(products);
         const { order, payment } = await prisma.$transaction(async (tx) => {
             //creating the order first
             const order = await createOrder(tx, products, totalAmount, request.userId, OrderStatus.PAYMENT_PENDING);
@@ -46,6 +47,7 @@ export const createOrderController = async function (request: FastifyRequest<{
 
         const { paymentUrl, sessionId } = await initiatePayment({
             orderId: order.id,
+            products,
             paymentId: payment.id,
             amount: totalAmount,
         });
@@ -57,6 +59,9 @@ export const createOrderController = async function (request: FastifyRequest<{
             sessionId,
         });
     } catch (err) {
+        if (err instanceof ProductNotFoundError) {
+            return reply.code(400).send({ message: err.message });
+        }
         request.log.error(`Error while creating orders, ${err}`);
         return reply.code(403).send({message: "Error while creating orders", error: err});
     }

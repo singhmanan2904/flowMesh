@@ -1,13 +1,48 @@
+import { prisma } from "../../../lib/prismaClient.js";
 import {
     createCheckoutSession,
+    type CheckoutLineItem,
     type CreateCheckoutSessionResult,
 } from "./paymentProvider.js";
 
 export type InitiatePaymentInput = {
     orderId: string;
+    products: string[];
     paymentId: string;
     amount: number;
 };
+
+function aggregateProductQuantities(productIds: string[]): Map<string, number> {
+    const counts = new Map<string, number>();
+    for (const id of productIds) {
+        counts.set(id, (counts.get(id) ?? 0) + 1);
+    }
+    return counts;
+}
+
+async function resolveCheckoutLineItems(productIds: string[]): Promise<CheckoutLineItem[]> {
+    const quantities = aggregateProductQuantities(productIds);
+    const products = await prisma.product.findMany({
+        where: { id: { in: [...quantities.keys()] } },
+    });
+
+    const priceById = new Map(products.map((product) => [product.id, product]));
+
+    return [...quantities.entries()].map(([productId, quantity]) => {
+        const product = priceById.get(productId);
+        if (!product) {
+            throw new Error(`Product not found: ${productId}`);
+        }
+
+        return {
+            productId,
+            name: productId,
+            unitAmountCents: Math.round(product.price * 100),
+            quantity,
+            imageUrl: product.imageUrl,
+        };
+    });
+}
 
 /**
  * Called synchronously from POST /orders after the order + payment rows are created.
@@ -16,6 +51,12 @@ export type InitiatePaymentInput = {
 export async function initiatePayment(
     input: InitiatePaymentInput
 ): Promise<CreateCheckoutSessionResult> {
-    // TODO: optionally persist sessionId on the Payment row before returning
-    return createCheckoutSession(input);
+    const lineItems = await resolveCheckoutLineItems(input.products);
+
+    return createCheckoutSession({
+        orderId: input.orderId,
+        paymentId: input.paymentId,
+        amount: input.amount,
+        lineItems,
+    });
 }

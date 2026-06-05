@@ -2,14 +2,13 @@
 export const orderBodySchema = {
     $id: "orderBodySchema",
     type: "object",
-    required: ["products", "totalAmount"],
+    required: ["products"],
     properties: {
         products: { type: "array", 
             items: {
                 type: "string"
             }
         },
-        totalAmount: {type: "number"},
     }
 
 }

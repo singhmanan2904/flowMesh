@@ -19,6 +19,12 @@ model Users {
   orders   Orders[]
 }
 
+model Product {
+  id       String @id
+  price    Float
+  imageUrl String
+}
+
 model Orders {
   id          String      @id @default(uuid())
   products    String[]
