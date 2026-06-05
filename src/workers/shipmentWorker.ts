@@ -21,7 +21,7 @@ async function createShipment(orderId: string, products: string[], status: Shipm
 
 async function updateShipment(orderId: string, products: string[], status: ShipmentStatus) {
     try {
-        const shipment = await prisma.$transaction(async (tx) => {
+        await prisma.$transaction(async (tx) => {
             await tx.shipment.update({
                 where: { orderId },
                 data: { status },

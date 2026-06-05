@@ -3,6 +3,7 @@ import { handlePaymentSuccess } from "../services/handlePaymentSuccess.js";
 import { stripe } from "../../../lib/stripe.js";
 import type Stripe from "stripe";
 import { handlePaymentFailure } from "../services/handlePaymentFailure.js";
+import { prisma } from "../../../lib/prismaClient.js";
 
 /**
  * Stripe webhook endpoint — no JWT auth; verify via Stripe signing secret instead.
@@ -65,5 +66,28 @@ export const stripeWebhookController = async function (
     } catch (err) {
         request.log.error(`Stripe webhook error: ${err}`);
         return reply.code(400).send({ message: "Webhook handler failed" });
+    }
+};
+
+export const getPaymentController = async function (
+    request: FastifyRequest<{
+        Querystring: {
+            orderId: string[];
+        };
+    }>,
+    reply: FastifyReply
+) {
+    try {
+        const payments = await prisma.payment.findMany({
+            where: {
+                orderId: {
+                    in: request.query.orderId,
+                },
+            },
+        });
+        return reply.code(200).send({ payments });
+    } catch (err) {
+        request.log.error(`Error getting payments: ${err}`);
+        return reply.code(500).send({ message: "Error getting payments" });
     }
 };

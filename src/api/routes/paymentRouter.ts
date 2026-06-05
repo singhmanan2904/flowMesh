@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { stripeWebhookController } from "../controllers/payment.controller.js";
+import { getPaymentController, stripeWebhookController } from "../controllers/payment.controller.js";
 
 function paymentRouter(fastify: FastifyInstance) {
     fastify.addContentTypeParser(
@@ -14,6 +14,10 @@ function paymentRouter(fastify: FastifyInstance) {
             }
         }
     );
+
+    fastify.get("/:orderId", {
+        handler: getPaymentController,
+    });
 
     fastify.post("/webhook", {
         handler: stripeWebhookController,
