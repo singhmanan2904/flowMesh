@@ -64,12 +64,12 @@ const shipmentWorker = new Worker("shipmentQueue", async (job: {data: {orderId: 
         switch (name) {
             case "start_shipment":
                 await createShipment(orderId, productIds, ShipmentStatus.PENDING);
-                await shipmentQueue.add("order_shipped", {orderId, products}, {delay: 60 * 1000});
+                await shipmentQueue.add("order_shipped", {orderId, products}, {delay: 60 * 1000, attempts: 3, backoff: {type: "exponential", delay: 1000}});
                 console.log("order_placed job completed", job.data.orderId);
                 break;
             case "order_shipped":
                 await updateShipment(orderId, productIds, ShipmentStatus.SHIPPED);
-                await shipmentQueue.add("order_delivered", {orderId, products}, {delay: 120 * 1000});
+                await shipmentQueue.add("order_delivered", {orderId, products}, {delay: 120 * 1000, attempts: 3, backoff: {type: "exponential", delay: 1000}});
                 console.log("order_shipped job completed", job.data.orderId);
                 break;
             case "order_delivered":

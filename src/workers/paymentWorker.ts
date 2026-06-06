@@ -24,7 +24,13 @@ const paymentWorker = new Worker("paymentQueue", async (job: {data: {id: string,
                         data: { status: OrderStatus.PAYMENT_COMPLETED },
                     });
                 });
-                await shipmentQueue.add("start_shipment", { orderId, products });
+                await shipmentQueue.add("start_shipment", { orderId, products }, {
+                    attempts: 3,
+                    backoff: {
+                        type: "exponential",
+                        delay: 1000,
+                    }
+                });
                 break;
             case "payment_failed":
                 await prisma.$transaction(async (tx) => {

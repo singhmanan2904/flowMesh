@@ -22,7 +22,17 @@ export async function handlePaymentSuccess(
         if(!orderId || !paymentId || !sessionId || !products) {
             throw new Error("Invalid input");
         }
-        paymentQueue.add("payment_completed", { id: paymentId, status: PaymentStatus.COMPLETED, orderId, products: JSON.parse(products) });
+        paymentQueue.add(
+            "payment_completed", 
+            { id: paymentId, status: PaymentStatus.COMPLETED, orderId, products: JSON.parse(products) }, 
+            {
+                attempts: 3,
+                backoff: {
+                    type: "exponential",
+                    delay: 1000,
+                }
+            }
+        );
     } catch (err) {
         throw new Error(`Failed to handle payment success: ${err}`);
     }

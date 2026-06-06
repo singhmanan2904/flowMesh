@@ -15,7 +15,17 @@ export const handlePaymentFailure = async ({ orderId, paymentId, sessionId, prod
             throw new Error("Invalid input");
         }
 
-        paymentQueue.add("payment_failed", { id: paymentId, status: PaymentStatus.FAILED, orderId, products: JSON.parse(products) });
+        paymentQueue.add(
+            "payment_failed", 
+            { id: paymentId, status: PaymentStatus.FAILED, orderId, products: JSON.parse(products) },
+            {
+                attempts: 3,
+                backoff: {
+                    type: "exponential",
+                    delay: 1000,
+                }
+            }
+        );
     } catch (err) {
         throw new Error(`Failed to handle payment failure: ${err}`);
     }
