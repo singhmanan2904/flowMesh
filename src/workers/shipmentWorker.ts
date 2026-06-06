@@ -2,19 +2,23 @@ import { Job, Worker } from "bullmq";
 import { OrderStatus, ShipmentStatus } from "../generated/prisma/enums.js";
 import { prisma } from "../../lib/prismaClient.js";
 import { shipmentQueue } from "../queue/shipment.queue.js";
+import { createLogger } from "../../logger/logger.js";
+
+const log = createLogger("shipmentWorker");
 
 async function createShipment(orderId: string, products: string[], status: ShipmentStatus) {
     try {
-    const shipment = await prisma.shipment.create({
-        data: {
-            orderId,
-            products,
-            status,
-        }
+        const shipment = await prisma.shipment.create({
+            data: {
+                orderId,
+                products,
+                status,
+            },
         });
+        log.info({ orderId, status, shipmentId: shipment.id }, "Shipment created");
         return shipment;
     } catch (err) {
-        console.error(`Error while creating shipment: ${err}`);
+        log.error({ err, orderId, status }, "Failed to create shipment");
         throw err;
     }
 }
@@ -50,55 +54,71 @@ async function updateShipment(orderId: string, products: string[], status: Shipm
                     throw new Error("Invalid shipment status");
             }
         });
+        log.info({ orderId, status }, "Shipment updated");
     } catch (err) {
-        console.error(`Error while updating shipment: ${err}`);
+        log.error({ err, orderId, status }, "Failed to update shipment");
         throw err;
     }
 }
 
-const shipmentWorker = new Worker("shipmentQueue", async (job: {data: {orderId: string, products: {productId: string}[]}, name: string}) => {
-    try {
+const shipmentWorker = new Worker(
+    "shipmentQueue",
+    async (job: { data: { orderId: string; products: { productId: string }[] }; name: string }) => {
         const { orderId, products } = job.data;
         const productIds = products.map((product) => product.productId! as string);
         const name = job.name;
-        switch (name) {
-            case "start_shipment":
-                await createShipment(orderId, productIds, ShipmentStatus.PENDING);
-                await shipmentQueue.add("order_shipped", {orderId, products}, {delay: 60 * 1000, attempts: 3, backoff: {type: "exponential", delay: 1000}});
-                console.log("order_placed job completed", job.data.orderId);
-                break;
-            case "order_shipped":
-                await updateShipment(orderId, productIds, ShipmentStatus.SHIPPED);
-                await shipmentQueue.add("order_delivered", {orderId, products}, {delay: 120 * 1000, attempts: 3, backoff: {type: "exponential", delay: 1000}});
-                console.log("order_shipped job completed", job.data.orderId);
-                break;
-            case "order_delivered":
-                await updateShipment(orderId, productIds, ShipmentStatus.DELIVERED);
-                console.log("order_delivered job completed", job.data.orderId);
-                break;
-            default:
-                throw new Error("Invalid job name");
+
+        log.info({ jobName: name, orderId, productCount: productIds.length }, "Processing shipment job");
+
+        try {
+            switch (name) {
+                case "start_shipment":
+                    await createShipment(orderId, productIds, ShipmentStatus.PENDING);
+                    await shipmentQueue.add(
+                        "order_shipped",
+                        { orderId, products },
+                        { delay: 60 * 1000, attempts: 3, backoff: { type: "exponential", delay: 1000 } }
+                    );
+                    log.info({ orderId, jobName: name }, "Shipment started, order_shipped job scheduled");
+                    break;
+                case "order_shipped":
+                    await updateShipment(orderId, productIds, ShipmentStatus.SHIPPED);
+                    await shipmentQueue.add(
+                        "order_delivered",
+                        { orderId, products },
+                        { delay: 120 * 1000, attempts: 3, backoff: { type: "exponential", delay: 1000 } }
+                    );
+                    log.info({ orderId, jobName: name }, "Order shipped, order_delivered job scheduled");
+                    break;
+                case "order_delivered":
+                    await updateShipment(orderId, productIds, ShipmentStatus.DELIVERED);
+                    log.info({ orderId, jobName: name }, "Order delivered");
+                    break;
+                default:
+                    log.error({ jobName: name, orderId }, "Unknown shipment job name");
+                    throw new Error("Invalid job name");
+            }
+        } catch (err) {
+            log.error({ err, orderId, jobName: name }, "Shipment job processing failed");
+            throw err;
         }
-        
-    } catch (err) {
-        console.log("error while creating shipments for order", job.data.orderId, err);
-        throw err;
+    },
+    {
+        connection: {
+            host: process.env.REDIS_HOST,
+            port: Number(process.env.REDIS_PORT),
+        },
     }
-}, {
-    connection: {
-        host: process.env.REDIS_HOST,
-        port: Number(process.env.REDIS_PORT),
-    } 
-});
+);
 
 shipmentWorker.on("completed", (job: Job) => {
-    console.log("shipment worker completed job", job.name);
+    log.info({ jobName: job.name, orderId: job.data?.orderId }, "Shipment job completed");
 });
 
 shipmentWorker.on("failed", (job, err) => {
-    console.error("shipment worker failed job", job?.name, err);
+    log.error({ err, jobName: job?.name, orderId: job?.data?.orderId }, "Shipment job failed");
 });
 
 shipmentWorker.on("error", (err) => {
-    console.error("shipment worker error", err);
+    log.error({ err }, "Shipment worker error");
 });

@@ -4,6 +4,9 @@ import {
     type CheckoutLineItem,
     type CreateCheckoutSessionResult,
 } from "./paymentProvider.js";
+import { createLogger } from "../../../logger/logger.js";
+
+const log = createLogger("initiatePayment");
 
 export type InitiatePaymentInput = {
     orderId: string;
@@ -48,9 +51,12 @@ async function resolveCheckoutLineItems(productIds: string[]): Promise<CheckoutL
  * Called synchronously from POST /orders after the order + payment rows are created.
  * Returns the payment URL the client should redirect the user to immediately.
  */
-export async function initiatePayment(
-    input: InitiatePaymentInput
-): Promise<CreateCheckoutSessionResult> {
+export async function initiatePayment(input: InitiatePaymentInput): Promise<CreateCheckoutSessionResult> {
+    log.info(
+        { orderId: input.orderId, paymentId: input.paymentId, amount: input.amount, productCount: input.products.length },
+        "Initiating payment"
+    );
+
     const lineItems = await resolveCheckoutLineItems(input.products);
 
     return createCheckoutSession({

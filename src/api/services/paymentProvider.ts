@@ -1,4 +1,7 @@
 import Stripe from "stripe";
+import { createLogger } from "../../../logger/logger.js";
+
+const log = createLogger("paymentProvider");
 
 export type CheckoutLineItem = {
     productId: string;
@@ -35,6 +38,16 @@ export async function createCheckoutSession(
 
     const frontendUrl = process.env.FRONTEND_URL ?? "http://localhost:3000";
 
+    log.info(
+        {
+            orderId: input.orderId,
+            paymentId: input.paymentId,
+            amount: input.amount,
+            lineItemCount: input.lineItems.length,
+        },
+        "Creating Stripe checkout session"
+    );
+
     try {
         const checkoutSession = await stripe.checkout.sessions.create({
             payment_method_types: ["card"],
@@ -66,12 +79,20 @@ export async function createCheckoutSession(
             throw new Error("Stripe checkout session did not return a payment URL");
         }
 
+        log.info(
+            { orderId: input.orderId, paymentId: input.paymentId, sessionId: checkoutSession.id },
+            "Stripe checkout session created"
+        );
+
         return {
             paymentUrl: checkoutSession.url,
             sessionId: checkoutSession.id,
         };
     } catch (error) {
-        console.error("Error while creating checkout session", error);
+        log.error(
+            { err: error, orderId: input.orderId, paymentId: input.paymentId, amount: input.amount },
+            "Failed to create Stripe checkout session"
+        );
         throw error;
     }
 }

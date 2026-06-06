@@ -17,10 +17,9 @@ export const stripeWebhookController = async function (
     reply: FastifyReply
 ) {
     try {
-        // TODO: verify Stripe signature (request.rawBody + stripe-signature header)
-        // TODO: parse event; on checkout.session.completed call handlePaymentSuccess(...)
         const signature = request.headers["stripe-signature"];
         if (!signature || Array.isArray(signature) || !request.rawBody) {
+            request.log.warn("Stripe webhook rejected: missing signature or raw body");
             return reply.code(400).send({ message: "Invalid webhook request" });
         }
 
@@ -28,43 +27,58 @@ export const stripeWebhookController = async function (
         try {
             event = stripe.webhooks.constructEvent(request.rawBody, signature, process.env.STRIPE_WEBHOOK_SECRET!);
         } catch (err) {
-            request.log.error(`Error parsing Stripe event: ${err}`);
+            request.log.error({ err }, "Failed to verify Stripe webhook signature");
             return reply.code(400).send({ message: "Invalid event" });
         }
-        
+
+        request.log.info({ eventType: event.type, eventId: event.id }, "Stripe webhook received");
+
         switch (event.type) {
-            case "checkout.session.completed":
+            case "checkout.session.completed": {
                 const session = event.data.object as Stripe.Checkout.Session;
+                const orderId = session.metadata?.orderId ?? "";
+                const paymentId = session.metadata?.paymentId ?? "";
+                request.log.info({ orderId, paymentId, sessionId: session.id }, "Checkout session completed");
                 await handlePaymentSuccess({
-                    orderId: session.metadata?.orderId ?? "",
-                    paymentId: session.metadata?.paymentId ?? "",
+                    orderId,
+                    paymentId,
                     sessionId: session.id,
                     products: session.metadata?.products ?? "",
                 });
                 break;
-            case "payment_intent.payment_failed":
+            }
+            case "payment_intent.payment_failed": {
                 const paymentIntent = event.data.object as Stripe.PaymentIntent;
+                const orderId = paymentIntent.metadata?.orderId ?? "";
+                request.log.warn({ orderId, paymentIntentId: paymentIntent.id }, "Payment intent failed");
                 await handlePaymentFailure({
-                    orderId: paymentIntent.metadata?.orderId ?? "",
+                    orderId,
                     paymentId: paymentIntent.id,
                     sessionId: paymentIntent.id,
                     products: paymentIntent.metadata?.products ?? "",
                 });
                 break;
-            case "checkout.session.expired":
+            }
+            case "checkout.session.expired": {
                 const expiredSession = event.data.object as Stripe.Checkout.Session;
+                const orderId = expiredSession.metadata?.orderId ?? "";
+                const paymentId = expiredSession.metadata?.paymentId ?? "";
+                request.log.warn({ orderId, paymentId, sessionId: expiredSession.id }, "Checkout session expired");
                 await handlePaymentFailure({
-                    orderId: expiredSession.metadata?.orderId ?? "",
-                    paymentId: expiredSession.metadata?.paymentId ?? "",
+                    orderId,
+                    paymentId,
                     sessionId: expiredSession.id,
                     products: expiredSession.metadata?.products ?? "",
                 });
                 break;
+            }
+            default:
+                request.log.info({ eventType: event.type, eventId: event.id }, "Unhandled Stripe webhook event");
         }
 
         return reply.code(200).send({ received: true });
     } catch (err) {
-        request.log.error(`Stripe webhook error: ${err}`);
+        request.log.error({ err }, "Stripe webhook handler failed");
         return reply.code(400).send({ message: "Webhook handler failed" });
     }
 };
@@ -77,17 +91,20 @@ export const getPaymentController = async function (
     }>,
     reply: FastifyReply
 ) {
+    const orderIds = request.query.orderId;
     try {
+        request.log.info({ orderIds }, "Fetching payments for orders");
         const payments = await prisma.payment.findMany({
             where: {
                 orderId: {
-                    in: request.query.orderId,
+                    in: orderIds,
                 },
             },
         });
+        request.log.info({ orderIds, paymentCount: payments.length }, "Payments fetched");
         return reply.code(200).send({ payments });
     } catch (err) {
-        request.log.error(`Error getting payments: ${err}`);
+        request.log.error({ err, orderIds }, "Failed to fetch payments");
         return reply.code(500).send({ message: "Error getting payments" });
     }
 };
