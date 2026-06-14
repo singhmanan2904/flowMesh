@@ -5,8 +5,8 @@ export function authMiddleware(fastify: FastifyInstance) {
     fastify.decorateRequest("userId", "");
     fastify.addHook("preHandler", async (request: FastifyRequest, reply: FastifyReply) => {
         try {
-            const { authorization } = request.headers;
-            const decode = jwt.verify(authorization || "", process.env.SECRET_JWT || "") as { id: string };
+            const { flowmesh_token } = request.cookies;
+            const decode = jwt.verify(flowmesh_token || "", process.env.SECRET_JWT || "") as { id: string };
             if (!decode.id) {
                 request.log.warn({ url: request.url, method: request.method }, "Auth rejected: missing user id in token");
                 return reply.code(401).send({ message: "Invaild user!" });

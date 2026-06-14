@@ -71,7 +71,6 @@ export async function createCheckoutSession(
             metadata: {
                 orderId: input.orderId,
                 paymentId: input.paymentId,
-                products: JSON.stringify(input.lineItems),
             },
         });
 

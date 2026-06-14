@@ -3,9 +3,6 @@ import { prisma } from "../../../lib/prismaClient.js";
 
 export const getShipmentController = async function (
     request: FastifyRequest<{
-        Headers: {
-            Authorization: string;
-        };
         Params: {
             orderId: string;
         };

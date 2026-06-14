@@ -43,7 +43,6 @@ export const stripeWebhookController = async function (
                     orderId,
                     paymentId,
                     sessionId: session.id,
-                    products: session.metadata?.products ?? "",
                 });
                 break;
             }
@@ -55,7 +54,6 @@ export const stripeWebhookController = async function (
                     orderId,
                     paymentId: paymentIntent.id,
                     sessionId: paymentIntent.id,
-                    products: paymentIntent.metadata?.products ?? "",
                 });
                 break;
             }
@@ -68,7 +66,6 @@ export const stripeWebhookController = async function (
                     orderId,
                     paymentId,
                     sessionId: expiredSession.id,
-                    products: expiredSession.metadata?.products ?? "",
                 });
                 break;
             }

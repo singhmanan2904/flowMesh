@@ -16,9 +16,5 @@ export const orderBodySchema = {
 export const orderHeadersSchema = {
     $id: "orderHeadersSchema",
     type: "object",
-    required: ["authorization"],
-    properties: {
-        authorization: {type: "string"},
-    }
-
+    required: [],
 }

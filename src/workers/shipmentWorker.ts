@@ -6,6 +6,14 @@ import { createLogger } from "../../logger/logger.js";
 
 const log = createLogger("shipmentWorker");
 
+type ShipmentJobProduct = string | { productId: string };
+
+function normalizeProductIds(products: ShipmentJobProduct[]): string[] {
+    return products
+        .map((product) => (typeof product === "string" ? product : product.productId))
+        .filter((id): id is string => Boolean(id));
+}
+
 async function createShipment(orderId: string, products: string[], status: ShipmentStatus) {
     try {
         const shipment = await prisma.shipment.create({
@@ -63,10 +71,15 @@ async function updateShipment(orderId: string, products: string[], status: Shipm
 
 const shipmentWorker = new Worker(
     "shipmentQueue",
-    async (job: { data: { orderId: string; products: { productId: string }[] }; name: string }) => {
+    async (job: { data: { orderId: string; products: ShipmentJobProduct[] }; name: string }) => {
         const { orderId, products } = job.data;
-        const productIds = products.map((product) => product.productId! as string);
+        const productIds = normalizeProductIds(products);
         const name = job.name;
+
+        if (productIds.length === 0) {
+            log.error({ jobName: name, orderId, products }, "Shipment job missing product IDs");
+            throw new Error("Shipment job missing product IDs");
+        }
 
         log.info({ jobName: name, orderId, productCount: productIds.length }, "Processing shipment job");
 

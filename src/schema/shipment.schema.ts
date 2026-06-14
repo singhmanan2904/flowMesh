@@ -1,10 +1,7 @@
 export const shipmentHeadersSchema = {
     $id: "shipmentHeadersSchema",
     type: "object",
-    required: ["authorization"],
-    properties: {
-        authorization: {type: "string"},
-    }
+    required: [],
 }
 
 export const shipmentParamsSchema = {

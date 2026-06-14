@@ -4,6 +4,7 @@ export const authRegisterSchema = {
     required: ["username", "password"],
     properties: {
         username: {type: "string"},
-        password: {type: "string"}
+        password: {type: "string"},
+        email: {type: "string"},
     }
 }

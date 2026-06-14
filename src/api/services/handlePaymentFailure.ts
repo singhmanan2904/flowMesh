@@ -8,20 +8,18 @@ export type HandlePaymentFailureInput = {
     orderId: string;
     paymentId: string;
     sessionId: string;
-    products: string;
 };
 
-export const handlePaymentFailure = async ({ orderId, paymentId, sessionId, products }: HandlePaymentFailureInput) => {
+export const handlePaymentFailure = async ({ orderId, paymentId, sessionId }: HandlePaymentFailureInput) => {
     try {
         if (!orderId || !paymentId) {
             log.error({ orderId, paymentId, sessionId }, "Invalid payment failure input");
             throw new Error("Invalid input");
         }
 
-        const parsedProducts = products ? JSON.parse(products) : [];
         await paymentQueue.add(
             "payment_failed",
-            { id: paymentId, status: PaymentStatus.FAILED, orderId, products: parsedProducts },
+            { id: paymentId, status: PaymentStatus.FAILED, orderId, products: [] },
             {
                 attempts: 3,
                 backoff: {

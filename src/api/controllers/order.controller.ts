@@ -7,11 +7,7 @@ import { initiatePayment } from "../services/initiatePayment.js";
 import { calculateOrderTotal, ProductNotFoundError } from "../services/calculateOrderTotal.js";
 
 export const getOrderController = async function (
-    request: FastifyRequest<{
-        Headers: {
-            Authorization: string;
-        };
-    }>,
+    request: FastifyRequest,
     reply: FastifyReply
 ) {
     const { userId } = request;
@@ -34,9 +30,6 @@ export const createOrderController = async function (
     request: FastifyRequest<{
         Body: {
             products: string[];
-        };
-        Headers: {
-            Authorization: string;
         };
     }>,
     reply: FastifyReply

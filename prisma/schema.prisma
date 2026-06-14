@@ -16,6 +16,7 @@ model Users {
   id       String   @id @default(uuid())
   username String   @unique
   password String
+  email    String   @unique
   orders   Orders[]
 }
 

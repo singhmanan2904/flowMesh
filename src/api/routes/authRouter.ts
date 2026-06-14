@@ -16,11 +16,12 @@ function authRouter(fastify: FastifyInstance) {
                 Body: {
                     username: string;
                     password: string;
+                    email: string;
                 };
             }>,
             reply: FastifyReply
         ) => {
-            const { username } = request.body;
+            const { username, email } = request.body;
             try {
                 const { password } = request.body;
                 const hashedPassword = bcrypt.hashSync(password, 10);
@@ -28,11 +29,18 @@ function authRouter(fastify: FastifyInstance) {
                     data: {
                         username,
                         password: hashedPassword,
+                        email: email,
                     },
                 });
                 const token = await jwt.sign({ id: user.id }, process.env.SECRET_JWT || "", { expiresIn: "24h" });
                 request.log.info({ userId: user.id, username }, "User registered");
-                return reply.code(201).send({ token });
+                return reply.setCookie("flowmesh_token", token, {
+                    httpOnly: true,
+                    path: "/",
+                    maxAge: 24 * 60 * 60 * 1000,
+                    sameSite: "lax",
+                    secure: !process.env.IS_PRODUCTION!,
+                }).code(201).send({ message: "User registered successfully" });
             } catch (err) {
                 request.log.error({ err, username }, "Failed to register user");
                 return reply.code(403).send({ message: "Error while registering the user", err });
@@ -49,9 +57,6 @@ function authRouter(fastify: FastifyInstance) {
                 Body: {
                     username: string;
                     password: string;
-                };
-                Headers: {
-                    authorization: string;
                 };
             }>,
             reply: FastifyReply
@@ -75,7 +80,13 @@ function authRouter(fastify: FastifyInstance) {
                 }
                 const token = jwt.sign({ id: user.id }, process.env.SECRET_JWT || "", { expiresIn: "24h" });
                 request.log.info({ userId: user.id, username }, "User logged in");
-                return { token };
+                return reply.setCookie("flowmesh_token", token, {
+                    httpOnly: true,
+                    path: "/",
+                    maxAge: 24 * 60 * 60 * 1000,
+                    sameSite: "lax",
+                    secure: !process.env.IS_PRODUCTION!,
+                }).code(201).send({ message: "User logged in successfully" });
             } catch (err) {
                 request.log.error({ err, username }, "Failed to log in user");
                 return reply.code(403).send({ message: "Error while logging in the user", err });
