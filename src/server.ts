@@ -13,6 +13,13 @@ import { redisClient } from "../lib/redisClient.js";
 
 const fastify = Fastify({ loggerInstance: logger });
 
+const frontendUrl = process.env.FRONTEND_URL!.replace(/\/+$/, "");
+
+await fastify.register(cors, {
+    origin: frontendUrl,
+    credentials: true,
+});
+
 await fastify.register(rateLimit, {
     global: true,
     max: Number(process.env.RATE_LIMIT_MAX ?? 100),
@@ -26,11 +33,6 @@ fastify.register(authRouter, { prefix: "/auth" });
 fastify.register(shipmentRouter, { prefix: "/shipments" });
 fastify.register(paymentRouter, { prefix: "/payments" });
 fastify.register(productsRouter, { prefix: "/products" });
-
-await fastify.register(cors, {
-    origin: process.env.FRONTEND_URL!,
-    credentials: true,
-});
 
 fastify.register(fastifyCookie, {
     secret: process.env.COOKIE_SECRET!,
