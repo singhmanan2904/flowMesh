@@ -20,6 +20,7 @@ function paymentRouter(fastify: FastifyInstance) {
     });
 
     fastify.post("/webhook", {
+        config: { rateLimit: false },
         handler: stripeWebhookController,
     });
 }

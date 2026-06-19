@@ -1,6 +1,7 @@
 import { Job, Worker } from "bullmq";
 import { OrderStatus, ShipmentStatus } from "../generated/prisma/enums.js";
 import { prisma } from "../../lib/prismaClient.js";
+import { redisConnection } from "../../lib/redisConnection.js";
 import { shipmentQueue } from "../queue/shipment.queue.js";
 import { createLogger } from "../../logger/logger.js";
 
@@ -117,10 +118,7 @@ const shipmentWorker = new Worker(
         }
     },
     {
-        connection: {
-            host: process.env.REDIS_HOST,
-            port: Number(process.env.REDIS_PORT),
-        },
+        connection: redisConnection,
     }
 );
 

@@ -64,6 +64,8 @@ services:
     build:
       context: .
       dockerfile: src/api/DockerFile
+      args:
+        DATABASE_URL: ${DATABASE_URL}
     container_name: flowmesh-api
     ports:
       - "5555:5555"
@@ -80,6 +82,8 @@ services:
     build:
       context: .
       dockerfile: src/workers/DockerFile
+      args:
+        DATABASE_URL: ${DATABASE_URL}
     container_name: flowmesh-payment-worker
     command: node dist/src/workers/paymentWorker.js
     depends_on:
@@ -92,6 +96,8 @@ services:
     build:
       context: .
       dockerfile: src/workers/DockerFile
+      args:
+        DATABASE_URL: ${DATABASE_URL}
     container_name: flowmesh-shipment-worker
     command: node dist/src/workers/shipmentWorker.js
     depends_on:

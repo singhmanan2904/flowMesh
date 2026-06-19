@@ -1,4 +1,6 @@
+import "dotenv/config";
 import Fastify from "fastify";
+import rateLimit from "@fastify/rate-limit";
 import orderRoute from "./api/routes/ordersRouter.js";
 import authRouter from "./api/routes/authRouter.js";
 import shipmentRouter from "./api/routes/shipmentRouter.js";
@@ -7,8 +9,17 @@ import logger from "../logger/logger.js";
 import cors from "@fastify/cors";
 import fastifyCookie from "@fastify/cookie";
 import { productsRouter } from "./api/routes/productsRouter.js";
+import { redisClient } from "../lib/redisClient.js";
 
 const fastify = Fastify({ loggerInstance: logger });
+
+await fastify.register(rateLimit, {
+    global: true,
+    max: Number(process.env.RATE_LIMIT_MAX ?? 100),
+    timeWindow: process.env.RATE_LIMIT_WINDOW ?? "1 minute",
+    redis: redisClient,
+    nameSpace: "flowmesh:ratelimit:",
+});
 
 fastify.register(orderRoute, { prefix: "/orders" });
 fastify.register(authRouter, { prefix: "/auth" });
@@ -31,6 +42,10 @@ async function main() {
     await fastify.listen({ port, host });
     fastify.log.info({ port, host }, "Server started");
 }
+
+fastify.addHook("onClose", async () => {
+    await redisClient.quit();
+});
 
 ["SIGINT", "SIGTERM"].forEach((signal) => {
     process.on(signal, async () => {

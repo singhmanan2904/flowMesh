@@ -8,6 +8,12 @@ function authRouter(fastify: FastifyInstance) {
     fastify.addSchema(authRegisterSchema);
 
     fastify.post("/register", {
+        config: {
+            rateLimit: {
+                max: Number(process.env.AUTH_RATE_LIMIT_MAX ?? 10),
+                timeWindow: process.env.AUTH_RATE_LIMIT_WINDOW ?? "15 minutes",
+            },
+        },
         schema: {
             body: { $ref: "authRegisterSchema" },
         },
@@ -49,6 +55,12 @@ function authRouter(fastify: FastifyInstance) {
     });
 
     fastify.post("/login", {
+        config: {
+            rateLimit: {
+                max: Number(process.env.AUTH_RATE_LIMIT_MAX ?? 10),
+                timeWindow: process.env.AUTH_RATE_LIMIT_WINDOW ?? "15 minutes",
+            },
+        },
         schema: {
             body: { $ref: "authRegisterSchema" },
         },

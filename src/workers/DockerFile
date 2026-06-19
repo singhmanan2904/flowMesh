@@ -9,10 +9,8 @@ RUN yarn install
 COPY . .
 
 # prisma.config.ts requires DATABASE_URL at build time for `prisma generate`
-ENV DATABASE_URL=postgres://postgres:postgres@postgres:5432/flowmesh
-
-# Generate prisma client
-RUN npx prisma generate
+ARG DATABASE_URL
+RUN DATABASE_URL="$DATABASE_URL" npx prisma generate
 
 # Build the project
 RUN yarn build
