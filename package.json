@@ -6,7 +6,7 @@
   "scripts": {
     "build": "tsc",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node dist/server.js",
+    "start": "node dist/src/server.js",
     "dev": "NODE_ENV=development tsx watch src/server.ts",
     "worker:payment": "node dist/src/workers/paymentWorker.js",
     "worker:shipment": "node dist/src/workers/shipmentWorker.js",
