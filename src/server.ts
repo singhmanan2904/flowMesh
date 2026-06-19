@@ -27,8 +27,9 @@ fastify.register(fastifyCookie, {
 
 async function main() {
     const port = Number(process.env.PORT) || 5555;
-    await fastify.listen({ port });
-    fastify.log.info({ port }, "Server started");
+    const host = process.env.HOST ?? "0.0.0.0";
+    await fastify.listen({ port, host });
+    fastify.log.info({ port, host }, "Server started");
 }
 
 ["SIGINT", "SIGTERM"].forEach((signal) => {

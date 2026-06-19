@@ -1,22 +1,106 @@
-version: '3.8'
+x-app-env: &app-env
+  env_file:
+    - .env
+    - .env.docker
 
 services:
-  loki:
-    image: grafana/loki:3.0.0                       # Specifies the Loki Docker image and version.
-    container_name: loki                            # Names the container for easier management.
+  # -----------------------
+  # DATABASE + REDIS
+  # -----------------------
+  postgres:
+    image: postgres:15
+    container_name: flowmesh-postgres
+    ports:
+      - "5434:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: flowmesh
     volumes:
-      - ./loki-config.yaml:/mnt/config/loki-config.yaml # Mounts the Loki configuration file.
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7
+    container_name: flowmesh-redis
+    ports:
+      - "6379:6379"
+
+  # -----------------------
+  # LOGGING STACK
+  # -----------------------
+  loki:
+    image: grafana/loki:3.0.0
+    container_name: loki
+    volumes:
+      - ./loki-config.yaml:/mnt/config/loki-config.yaml
       - ./data:/tmp
     ports:
-      - "3100:3100"                                 # Maps port 3100 on the host to port 3100 in the container.
-    command: -config.file=/mnt/config/loki-config.yaml # Runs Loki with the specified configuration file.
+      - "3100:3100"
+    command: -config.file=/mnt/config/loki-config.yaml
 
   promtail:
-    image: grafana/promtail:3.0.0                   # Specifies the Promtail Docker image and version.
-    container_name: promtail                        # Names the container for easier management.
+    image: grafana/promtail:3.0.0
+    container_name: promtail
     volumes:
-      - ./promtail-config.yaml:/mnt/config/promtail-config.yaml # Mounts the Promtail configuration file.
-      - /var/log:/var/log                           # Mounts the host's log directory.
+      - ./promtail-config.yaml:/mnt/config/promtail-config.yaml
+      - /var/log:/var/log
     depends_on:
-      - loki                                       # Ensures Promtail starts after Loki.
-    command: -config.file=/mnt/config/promtail-config.yaml # Runs Promtail with the specified configuration file.
+      - loki
+    command: -config.file=/mnt/config/promtail-config.yaml
+
+  grafana:
+    image: grafana/grafana-oss
+    container_name: grafana
+    ports:
+      - "3099:3000"
+    depends_on:
+      - loki
+
+  # -----------------------
+  # API
+  # -----------------------
+  flowmesh-api:
+    <<: *app-env
+    build:
+      context: .
+      dockerfile: src/api/DockerFile
+    container_name: flowmesh-api
+    ports:
+      - "5555:5555"
+    depends_on:
+      - postgres
+      - redis
+      - loki
+
+  # -----------------------
+  # WORKERS
+  # -----------------------
+  flowmesh-payment-worker:
+    <<: *app-env
+    build:
+      context: .
+      dockerfile: src/workers/DockerFile
+    container_name: flowmesh-payment-worker
+    command: node dist/src/workers/paymentWorker.js
+    depends_on:
+      - postgres
+      - redis
+      - loki
+
+  flowmesh-shipment-worker:
+    <<: *app-env
+    build:
+      context: .
+      dockerfile: src/workers/DockerFile
+    container_name: flowmesh-shipment-worker
+    command: node dist/src/workers/shipmentWorker.js
+    depends_on:
+      - postgres
+      - redis
+      - loki
+
+# -----------------------
+# VOLUMES
+# -----------------------
+volumes:
+  postgres_data:

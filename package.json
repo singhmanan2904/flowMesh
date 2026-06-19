@@ -4,10 +4,12 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "build": "tsc",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "tsx watch src/server.ts",
-    "worker:payment": "tsx watch src/workers/paymentWorker.ts",
-    "worker:shipment": "tsx watch src/workers/shipmentWorker.ts",
+    "start": "node dist/server.js",
+    "dev": "NODE_ENV=development tsx watch src/server.ts",
+    "worker:payment": "node dist/src/workers/paymentWorker.js",
+    "worker:shipment": "node dist/src/workers/shipmentWorker.js",
     "db:seed": "tsx prisma/seed.ts"
   },
   "prisma": {
@@ -30,6 +32,7 @@
     "pg": "^8.20.0",
     "pino": "^10.3.1",
     "pino-loki": "^3.0.0",
+    "prom-client": "^15.1.3",
     "strip": "^3.0.0",
     "stripe": "^22.2.0"
   },
