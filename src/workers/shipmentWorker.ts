@@ -70,7 +70,7 @@ async function updateShipment(orderId: string, products: string[], status: Shipm
     }
 }
 
-const shipmentWorker = new Worker(
+export const shipmentWorker = new Worker(
     "shipmentQueue",
     async (job: { data: { orderId: string; products: ShipmentJobProduct[] }; name: string }) => {
         const { orderId, products } = job.data;

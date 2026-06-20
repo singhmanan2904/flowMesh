@@ -7,8 +7,8 @@
     "build": "tsc",
     "render:build": "prisma generate && npm run build",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node dist/src/server.js",
-    "dev": "NODE_ENV=development tsx watch src/server.ts",
+    "start": "node dist/src/index.js",
+    "dev": "NODE_ENV=development tsx watch src/index.ts",
     "worker:payment": "node dist/src/workers/paymentWorker.js",
     "worker:shipment": "node dist/src/workers/shipmentWorker.js",
     "db:seed": "tsx prisma/seed.ts"

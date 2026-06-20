@@ -38,26 +38,14 @@ fastify.register(fastifyCookie, {
     secret: process.env.COOKIE_SECRET!,
 });
 
-async function main() {
-    const port = Number(process.env.PORT) || 5555;
-    const host = process.env.HOST ?? "0.0.0.0";
-    await fastify.listen({ port, host });
-    fastify.log.info({ port, host }, "Server started");
-}
-
 fastify.addHook("onClose", async () => {
     await redisClient.quit();
 });
 
-["SIGINT", "SIGTERM"].forEach((signal) => {
-    process.on(signal, async () => {
-        fastify.log.info({ signal }, "Shutting down server");
-        await fastify.close();
-        process.exit(0);
-    });
-});
-
-main().catch((err) => {
-    logger.error({ err }, "Server failed to start");
-    process.exit(1);
-});
+export async function startServer() {
+    const port = Number(process.env.PORT) || 5555;
+    const host = process.env.HOST ?? "0.0.0.0";
+    await fastify.listen({ port, host });
+    fastify.log.info({ port, host }, "Server started");
+    return fastify;
+}

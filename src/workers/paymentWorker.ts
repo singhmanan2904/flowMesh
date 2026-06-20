@@ -7,7 +7,7 @@ import { createLogger } from "../../logger/logger.js";
 
 const log = createLogger("paymentWorker");
 
-const paymentWorker = new Worker(
+export const paymentWorker = new Worker(
     "paymentQueue",
     async (job: {
         data: { id: string; status: "PENDING" | "COMPLETED" | "FAILED"; orderId: string; products: string[] };
