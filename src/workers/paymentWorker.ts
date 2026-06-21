@@ -25,7 +25,16 @@ export const paymentWorker = new Worker(
             }
 
             switch (name) {
-                case "payment_completed":
+                case "payment_completed": {
+                    const payment = await prisma.payment.findUnique({ where: { id } });
+                    if (!payment) {
+                        throw new Error(`Payment not found: ${id}`);
+                    }
+                    if (payment.status === PaymentStatus.COMPLETED) {
+                        log.info({ jobName: name, paymentId: id, orderId }, "Payment already completed, skipping");
+                        break;
+                    }
+
                     await prisma.$transaction(async (tx) => {
                         await tx.payment.update({
                             where: { id },
@@ -38,10 +47,17 @@ export const paymentWorker = new Worker(
                     });
                     log.info({ jobName: name, paymentId: id, orderId }, "Payment marked completed");
 
+                    const existingShipment = await prisma.shipment.findUnique({ where: { orderId } });
+                    if (existingShipment) {
+                        log.info({ orderId, shipmentId: existingShipment.id }, "Shipment already exists, skipping enqueue");
+                        break;
+                    }
+
                     await shipmentQueue.add(
                         "start_shipment",
                         { orderId, products },
                         {
+                            jobId: `start_shipment:${orderId}`,
                             attempts: 3,
                             backoff: {
                                 type: "exponential",
@@ -51,7 +67,24 @@ export const paymentWorker = new Worker(
                     );
                     log.info({ orderId, productCount: products.length }, "Start shipment job enqueued");
                     break;
-                case "payment_failed":
+                }
+                case "payment_failed": {
+                    const payment = await prisma.payment.findUnique({ where: { id } });
+                    if (!payment) {
+                        throw new Error(`Payment not found: ${id}`);
+                    }
+                    if (payment.status === PaymentStatus.FAILED) {
+                        log.info({ jobName: name, paymentId: id, orderId }, "Payment already failed, skipping");
+                        break;
+                    }
+                    if (payment.status === PaymentStatus.COMPLETED) {
+                        log.info(
+                            { jobName: name, paymentId: id, orderId },
+                            "Payment already completed, ignoring failure job"
+                        );
+                        break;
+                    }
+
                     await prisma.$transaction(async (tx) => {
                         await tx.payment.update({
                             where: { id },
@@ -64,6 +97,7 @@ export const paymentWorker = new Worker(
                     });
                     log.info({ jobName: name, paymentId: id, orderId }, "Payment marked failed");
                     break;
+                }
                 default:
                     log.error({ jobName: name, paymentId: id, orderId }, "Unknown payment job name");
                     throw new Error("Invalid payment status in payment queue job");

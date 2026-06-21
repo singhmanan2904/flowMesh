@@ -26,16 +26,27 @@ export async function handlePaymentSuccess({
             throw new Error("Invalid input");
         }
 
-        const order = await prisma.orders.findUnique({ where: { id: orderId } });
+        const [order, payment] = await Promise.all([
+            prisma.orders.findUnique({ where: { id: orderId } }),
+            prisma.payment.findUnique({ where: { id: paymentId } }),
+        ]);
         if (!order) {
             throw new Error(`Order not found: ${orderId}`);
         }
-        
+        if (!payment) {
+            throw new Error(`Payment not found: ${paymentId}`);
+        }
+        if (payment.status === PaymentStatus.COMPLETED) {
+            log.info({ orderId, paymentId, sessionId }, "Payment already completed, skipping enqueue");
+            return;
+        }
+
         log.info({ orderId, paymentId, sessionId, products: order.products }, "Payment success input");
         await paymentQueue.add(
             "payment_completed",
             { id: paymentId, status: PaymentStatus.COMPLETED, orderId, products: order.products },
             {
+                jobId: `payment_completed:${paymentId}`,
                 attempts: 3,
                 backoff: {
                     type: "exponential",

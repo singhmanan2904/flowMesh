@@ -4,6 +4,7 @@ import { stripe } from "../../../lib/stripe.js";
 import type Stripe from "stripe";
 import { handlePaymentFailure } from "../services/handlePaymentFailure.js";
 import { prisma } from "../../../lib/prismaClient.js";
+import { claimIdempotencyKey, releaseIdempotencyKey } from "../../utils/idempotency.js";
 
 /**
  * Stripe webhook endpoint — no JWT auth; verify via Stripe signing secret instead.
@@ -33,7 +34,18 @@ export const stripeWebhookController = async function (
 
         request.log.info({ eventType: event.type, eventId: event.id }, "Stripe webhook received");
 
-        switch (event.type) {
+        const webhookIdempotencyKey = `stripe:event:${event.id}`;
+        const isFirstDelivery = await claimIdempotencyKey(webhookIdempotencyKey);
+        if (!isFirstDelivery) {
+            request.log.info(
+                { eventType: event.type, eventId: event.id },
+                "Duplicate Stripe webhook, skipping"
+            );
+            return reply.code(200).send({ received: true, duplicate: true });
+        }
+
+        try {
+            switch (event.type) {
             case "checkout.session.completed": {
                 const session = event.data.object as Stripe.Checkout.Session;
                 const orderId = session.metadata?.orderId ?? "";
@@ -71,9 +83,13 @@ export const stripeWebhookController = async function (
             }
             default:
                 request.log.info({ eventType: event.type, eventId: event.id }, "Unhandled Stripe webhook event");
-        }
+            }
 
-        return reply.code(200).send({ received: true });
+            return reply.code(200).send({ received: true });
+        } catch (processingErr) {
+            await releaseIdempotencyKey(webhookIdempotencyKey);
+            throw processingErr;
+        }
     } catch (err) {
         request.log.error({ err }, "Stripe webhook handler failed");
         return reply.code(400).send({ message: "Webhook handler failed" });
