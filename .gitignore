@@ -8,3 +8,6 @@ dist
 
 /data
 /logs
+
+# Personal learning notes — not for public repo
+ARCHITECTURE_NOTES.md
