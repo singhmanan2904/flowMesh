@@ -41,6 +41,6 @@
     "moduleDetection": "force",
     "skipLibCheck": true,
   },
-  "include": ["src/**/*.ts", "lib/**/*.ts", "logger/**/*.ts"],
-  "exclude": ["node_modules", "dist", "prisma"]
+  "include": ["src/**/*.ts", "lib/**/*.ts", "logger/**/*.ts", "prisma/seed.ts"],
+  "exclude": ["node_modules", "dist"]
 }

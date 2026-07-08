@@ -11,10 +11,11 @@
     "dev": "NODE_ENV=development tsx watch src/index.ts",
     "worker:payment": "node dist/src/workers/paymentWorker.js",
     "worker:shipment": "node dist/src/workers/shipmentWorker.js",
-    "db:seed": "tsx prisma/seed.ts"
+    "db:seed": "node dist/prisma/seed.js",
+    "db:seed:dev": "tsx prisma/seed.ts"
   },
   "prisma": {
-    "seed": "tsx prisma/seed.ts"
+    "seed": "node dist/prisma/seed.js"
   },
   "type": "module",
   "keywords": [],
