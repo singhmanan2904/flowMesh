@@ -57,7 +57,7 @@ export const paymentWorker = new Worker(
                         "start_shipment",
                         { orderId, products },
                         {
-                            jobId: `start_shipment:${orderId}`,
+                            jobId: `start_shipment-${orderId}`,
                             attempts: 3,
                             backoff: {
                                 type: "exponential",

@@ -46,7 +46,7 @@ export async function handlePaymentSuccess({
             "payment_completed",
             { id: paymentId, status: PaymentStatus.COMPLETED, orderId, products: order.products },
             {
-                jobId: `payment_completed:${paymentId}`,
+                jobId: `payment_completed-${paymentId}`,
                 attempts: 3,
                 backoff: {
                     type: "exponential",

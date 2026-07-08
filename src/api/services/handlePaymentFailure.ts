@@ -34,7 +34,7 @@ export const handlePaymentFailure = async ({ orderId, paymentId, sessionId }: Ha
             "payment_failed",
             { id: paymentId, status: PaymentStatus.FAILED, orderId, products: [] },
             {
-                jobId: `payment_failed:${paymentId}`,
+                jobId: `payment_failed-${paymentId}`,
                 attempts: 3,
                 backoff: {
                     type: "exponential",
