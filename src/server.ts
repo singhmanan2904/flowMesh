@@ -9,6 +9,7 @@ import logger from "../logger/logger.js";
 import cors from "@fastify/cors";
 import fastifyCookie from "@fastify/cookie";
 import { productsRouter } from "./api/routes/productsRouter.js";
+import healthRouter from "./api/routes/healthRouter.js";
 import { redisClient } from "../lib/redisClient.js";
 
 const fastify = Fastify({ loggerInstance: logger });
@@ -28,6 +29,7 @@ await fastify.register(rateLimit, {
     nameSpace: "flowmesh:ratelimit:",
 });
 
+fastify.register(healthRouter);
 fastify.register(orderRoute, { prefix: "/orders" });
 fastify.register(authRouter, { prefix: "/auth" });
 fastify.register(shipmentRouter, { prefix: "/shipments" });
