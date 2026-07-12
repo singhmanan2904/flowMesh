@@ -9,6 +9,7 @@ services:
   # -----------------------
   postgres:
     image: postgres:15
+    restart: unless-stopped
     container_name: flowmesh-postgres
     environment:
       POSTGRES_USER: postgres
@@ -19,6 +20,7 @@ services:
 
   redis:
     image: redis:7
+    restart: unless-stopped
     container_name: flowmesh-redis
 
   # -----------------------
@@ -26,6 +28,7 @@ services:
   # -----------------------
   loki:
     image: grafana/loki:3.0.0
+    restart: unless-stopped
     container_name: loki
     volumes:
       - ./loki-config.yaml:/mnt/config/loki-config.yaml
@@ -34,6 +37,7 @@ services:
 
   promtail:
     image: grafana/promtail:3.0.0
+    restart: unless-stopped
     container_name: promtail
     volumes:
       - ./promtail-config.yaml:/mnt/config/promtail-config.yaml
@@ -44,9 +48,10 @@ services:
 
   grafana:
     image: grafana/grafana-oss
+    restart: unless-stopped
     container_name: grafana
     ports:
-      - "3099:3000"
+      - "127.0.0.1:3099:3000"
     depends_on:
       - loki
 
@@ -61,8 +66,9 @@ services:
       args:
         DATABASE_URL: ${DATABASE_URL}
     container_name: flowmesh-api
+    restart: unless-stopped
     ports:
-      - "5555:5555"
+      - "127.0.0.1:5555:5555"
     depends_on:
       - postgres
       - redis
@@ -79,6 +85,7 @@ services:
       args:
         DATABASE_URL: ${DATABASE_URL}
     container_name: flowmesh-payment-worker
+    restart: unless-stopped
     command: node dist/src/workers/paymentWorker.js
     depends_on:
       - postgres
@@ -93,6 +100,7 @@ services:
       args:
         DATABASE_URL: ${DATABASE_URL}
     container_name: flowmesh-shipment-worker
+    restart: unless-stopped
     command: node dist/src/workers/shipmentWorker.js
     depends_on:
       - postgres
