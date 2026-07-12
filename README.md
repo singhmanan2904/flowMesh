@@ -20,6 +20,7 @@ The project is structured as a learning/demo codebase for **event-driven order f
 - [NPM Scripts](#npm-scripts)
 - [Environment Variables](#environment-variables)
 - [Getting Started](#getting-started)
+- [Docker Compose & deploy.sh](#docker-compose--deploysh)
 - [Deployment Models](#deployment-models)
 - [Observability](#observability)
   - [Grafana & Loki in Action](#grafana--loki-in-action)
@@ -98,10 +99,24 @@ All queue jobs use **3 retries** with **exponential backoff** (1s base delay). J
 ### Docker & Production Build
 
 - **Docker Compose** spins up the full stack: PostgreSQL, Redis, API, both workers, and the logging stack (Loki, Promtail, Grafana)
-- Separate **Dockerfiles** for the API (`src/api/DockerFile`) and workers (`src/workers/DockerFile`)
-- Multi-stage build: `yarn build` compiles TypeScript to `dist/`; production images run compiled Node.js
-- `.env.docker` overrides hostnames for in-network service discovery (`postgres`, `redis`, `loki`)
+- Separate **multi-stage Dockerfiles** for the API (`src/api/DockerFile`) and workers (`src/workers/DockerFile`)
+  - `deps` → install dependencies (cached on lockfile changes)
+  - `build` → `prisma generate` + `yarn build` (TypeScript → `dist/`)
+  - `prod-deps` → production-only `node_modules`
+  - `runner` → minimal runtime image (`dist/`, prod deps, `prisma/` for migrations); runs as non-root `flowmesh` user
+- **`.env.docker`** overrides hostnames for in-network service discovery (`postgres`, `redis`, `loki`)
+- **`deploy.sh`** wraps common Compose workflows: rebuild, migrate, seed, recreate, restart, logs
+- API **healthcheck** in Compose polls `GET /ready` (DB + Redis connectivity)
 - API and workers handle **graceful shutdown** on `SIGINT` / `SIGTERM`
+
+### Health & Readiness
+
+| Endpoint | Purpose | Response |
+|----------|---------|----------|
+| `GET /health` | Liveness — process is running | `200 { "status": "ok" }` |
+| `GET /ready` | Readiness — PostgreSQL and Redis reachable | `200` when ready; `503` with per-dependency status when not |
+
+Both endpoints are excluded from rate limiting. Use `/health` for simple uptime checks and `/ready` before routing traffic or after deploys.
 
 ### Observability (Grafana + Loki)
 
@@ -325,6 +340,8 @@ flowchart TD
 | GET | `/payments/:orderId` | No* | Get payments by order ID (query param) |
 | POST | `/payments/webhook` | Stripe signature | Stripe webhook (idempotent) |
 | GET | `/shipments/:orderId` | Cookie | Get shipment for order |
+| GET | `/health` | No | Liveness probe |
+| GET | `/ready` | No | Readiness probe (DB + Redis) |
 
 \* Payment GET route is currently unauthenticated.
 
@@ -371,14 +388,14 @@ flowMesh-backend/
 │   ├── index.ts              # Combined entry: API + both workers (Render deploy)
 │   ├── server.ts             # Fastify app setup (routes, CORS, rate limit)
 │   ├── api/
-│   │   ├── DockerFile        # API container image
-│   │   ├── routes/           # auth, orders, payments, shipments, products
+│   │   ├── DockerFile        # API multi-stage container image
+│   │   ├── routes/           # auth, orders, payments, shipments, products, health
 │   │   ├── controllers/
 │   │   ├── middlewares/      # JWT cookie auth (preHandler hook)
 │   │   └── services/         # order, payment, Stripe adapter, webhook handlers
 │   ├── queue/                # paymentQueue, shipmentQueue
 │   ├── workers/
-│   │   ├── DockerFile        # Worker container image
+│   │   ├── DockerFile        # Worker multi-stage container image
 │   │   ├── paymentWorker.ts  # payment_completed / payment_failed
 │   │   └── shipmentWorker.ts # start_shipment → order_shipped → order_delivered
 │   ├── utils/
@@ -387,6 +404,8 @@ flowMesh-backend/
 │   ├── types/                # Fastify request augmentation (userId, rawBody)
 │   └── generated/prisma/     # Prisma client output (generated, gitignored)
 ├── docker-compose.yml        # Full local stack (DB, Redis, API, workers, logging)
+├── deploy.sh                 # Docker Compose deploy helper (build, migrate, restart, …)
+├── .dockerignore             # Excludes dev/docs files from image build context
 ├── docs/
 │   └── images/grafana/       # README screenshots (Grafana Explore)
 ├── loki-config.yaml          # Loki configuration
@@ -464,7 +483,6 @@ yarn db:seed
 yarn dev
 
 # Or split into separate terminals after `yarn build`:
-# Terminal 1 — API only:        node dist/src/server.js  (or tsx src/server.ts)
 # Terminal 2 — Payment worker:  yarn worker:payment
 # Terminal 3 — Shipment worker: yarn worker:shipment
 
@@ -481,31 +499,78 @@ Runs PostgreSQL, Redis, API, both workers, Loki, Promtail, and Grafana together.
 **Prerequisites:** Docker and Docker Compose installed; a `.env` file with secrets (`SECRET_JWT`, `COOKIE_SECRET`, `STRIPE_*`, `FRONTEND_URL`, etc.). `.env.docker` is loaded automatically and overrides hostnames for in-network services.
 
 ```bash
-docker compose up --build -d
+# First time or after a code push (rebuilds app images and starts the stack)
+./deploy.sh
 
-# Run migrations (first time or after schema changes)
-docker compose exec flowmesh-api npx prisma migrate deploy
+# First deploy or schema changes
+./deploy.sh --migrate
 
 # Seed product catalog (first time)
+./deploy.sh --seed
+
+# Pull latest code, redeploy, and migrate
+./deploy.sh --pull --migrate
+```
+
+Manual equivalents:
+
+```bash
+docker compose up --build -d
+docker compose exec flowmesh-api npx prisma migrate deploy
 docker compose exec flowmesh-api yarn db:seed
 ```
+
+See [Docker Compose & deploy.sh](#docker-compose--deploysh) for all `deploy.sh` flags.
 
 | Service | URL / Port |
 |---------|------------|
 | API | `http://localhost:5555` |
+| API health | `http://localhost:5555/health` |
+| API readiness | `http://localhost:5555/ready` |
 | PostgreSQL | `localhost:5434` |
 | Redis | `localhost:6379` |
 | Loki | `http://localhost:3100` |
 | Grafana | `http://localhost:3099` |
 
-Stripe webhooks still need forwarding in development — run `stripe listen --forward-to localhost:5555/payments/webhook` on the host and set `STRIPE_WEBHOOK_SECRET` in `.env`, then restart the API container.
+Stripe webhooks still need forwarding in development — run `stripe listen --forward-to localhost:5555/payments/webhook` on the host and set `STRIPE_WEBHOOK_SECRET` in `.env`, then restart the API container (`./deploy.sh --restart`).
 
 View logs:
 
 ```bash
+./deploy.sh --logs
+
+# Or manually:
 docker compose logs -f flowmesh-api
 docker compose logs -f flowmesh-payment-worker flowmesh-shipment-worker
 ```
+
+---
+
+## Docker Compose & deploy.sh
+
+`deploy.sh` is the recommended way to manage the Docker stack. It rebuilds **app services only** (`flowmesh-api`, both workers) by default and leaves infrastructure (Postgres, Redis, logging) running.
+
+| Command | When to use |
+|---------|-------------|
+| `./deploy.sh` | Redeploy after pushing code (build + up) |
+| `./deploy.sh --pull --migrate` | VPS/server release: pull, rebuild, migrate |
+| `./deploy.sh --migrate-only` | Apply pending migrations without rebuilding |
+| `./deploy.sh --recreate` | After port, env, or `docker-compose.yml` changes |
+| `./deploy.sh --restart` | Quick restart without rebuild |
+| `./deploy.sh --down` | Stop all containers (volumes preserved) |
+| `./deploy.sh --status` | Show container status |
+| `./deploy.sh --logs` | Follow app service logs |
+| `./deploy.sh --help` | Full flag list |
+
+Common combinations:
+
+```bash
+./deploy.sh --migrate --seed    # first deploy with schema + catalog
+./deploy.sh --no-build --recreate   # apply compose changes without rebuild
+./deploy.sh --build-only        # build images only (CI or pre-check)
+```
+
+When `--migrate` is used, the script waits for Postgres and the API `/ready` endpoint before running `prisma migrate deploy` inside the `flowmesh-api` container.
 
 ---
 
@@ -523,7 +588,7 @@ Docker Compose runs three separate containers:
 
 | Container | Command |
 |-----------|---------|
-| `flowmesh-api` | `node dist/src/server.js` |
+| `flowmesh-api` | `node dist/src/index.js` |
 | `flowmesh-payment-worker` | `node dist/src/workers/paymentWorker.js` |
 | `flowmesh-shipment-worker` | `node dist/src/workers/shipmentWorker.js` |
 
@@ -631,6 +696,7 @@ When something fails (e.g. webhook handler or queue enqueue), errors land in Lok
 | Global rate limit | Redis-backed, default 100 req/min (`RATE_LIMIT_MAX`) |
 | Auth rate limit | Stricter: 10 req/15 min on `/auth/register` and `/auth/login` |
 | Webhook rate limit | Disabled (`config: { rateLimit: false }`) so Stripe retries are not blocked |
+| Health endpoints | `/health` (liveness) and `/ready` (DB + Redis); excluded from rate limits |
 | Password storage | bcrypt (cost factor 10) |
 
 Frontend must use `credentials: "include"` on fetch/axios so cookies are sent cross-origin.
@@ -649,7 +715,6 @@ This is a demo/learning project — not production-hardened. Notable gaps:
 | `payment_intent.payment_failed` | Passes Stripe `paymentIntent.id` instead of internal `paymentId` from metadata |
 | Payment amount | `createPayment` accepts `amount` but `Payment` table has no amount column |
 | Metrics | `prom-client` is listed in dependencies but not wired up yet |
-| Health checks | No `/health` or readiness endpoints |
 | Centralized errors | No shared error middleware; controllers handle errors individually |
 
 See [PROJECT_OVERVIEW.md](./PROJECT_OVERVIEW.md) for a fuller improvement backlog.

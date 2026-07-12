@@ -9,10 +9,11 @@ This guide covers everything required to run flowMesh in **local development** a
 1. [Prerequisites](#prerequisites)
 2. [Environment Variables](#environment-variables)
 3. [Local Development Setup](#local-development-setup)
-4. [Verifying the Full Order Flow](#verifying-the-full-order-flow)
-5. [Production Setup](#production-setup)
-6. [Troubleshooting](#troubleshooting)
-7. [Process Checklist](#process-checklist)
+4. [Docker Compose & deploy.sh](#docker-compose--deploysh)
+5. [Verifying the Full Order Flow](#verifying-the-full-order-flow)
+6. [Production Setup](#production-setup)
+7. [Troubleshooting](#troubleshooting)
+8. [Process Checklist](#process-checklist)
 
 ---
 
@@ -255,6 +256,81 @@ Set `ENABLE_LOKI=false` to disable Loki and log to console only.
 
 ---
 
+## Docker Compose & deploy.sh
+
+Alternative to running Postgres, Redis, and each process manually: use **Docker Compose** with the included **`deploy.sh`** helper.
+
+### Prerequisites
+
+- Docker and Docker Compose
+- `.env` with secrets (`SECRET_JWT`, `COOKIE_SECRET`, `STRIPE_*`, `FRONTEND_URL`, etc.)
+- `.env.docker` is loaded automatically and overrides hostnames for in-network services (`postgres`, `redis`, `loki`)
+
+### First-time setup
+
+```bash
+./deploy.sh --migrate --seed
+```
+
+This rebuilds app images, starts the full stack (Postgres, Redis, API, workers, Loki, Promtail, Grafana), runs `prisma migrate deploy`, and seeds the product catalog.
+
+### Common deploy commands
+
+| Command | Use when |
+|---------|----------|
+| `./deploy.sh` | You pushed code and want to rebuild + redeploy app containers |
+| `./deploy.sh --pull --migrate` | Server release: pull git, rebuild, migrate |
+| `./deploy.sh --migrate-only` | Schema changed but images are already up to date |
+| `./deploy.sh --recreate` | Ports, env, or `docker-compose.yml` changed |
+| `./deploy.sh --restart` | Quick restart without rebuilding images |
+| `./deploy.sh --down` | Stop the stack (volumes kept) |
+| `./deploy.sh --logs` | Tail API + worker logs |
+| `./deploy.sh --status` | Show container status |
+
+Run `./deploy.sh --help` for the full flag list.
+
+### What gets built
+
+| Service | Dockerfile |
+|---------|------------|
+| `flowmesh-api` | `src/api/DockerFile` |
+| `flowmesh-payment-worker` | `src/workers/DockerFile` |
+| `flowmesh-shipment-worker` | `src/workers/DockerFile` |
+
+Both Dockerfiles use the same **multi-stage** layout: `deps` → `build` (`prisma generate` + `yarn build`) → `prod-deps` → `runner`. The final image includes `dist/`, production `node_modules`, and `prisma/` (for in-container migrations).
+
+### Health checks
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET http://localhost:5555/health` | Liveness — API process is up |
+| `GET http://localhost:5555/ready` | Readiness — PostgreSQL and Redis are reachable |
+
+Docker Compose configures a healthcheck on `flowmesh-api` that polls `/ready`. When using `--migrate`, `deploy.sh` waits for `/ready` before running migrations.
+
+### Manual compose commands
+
+If you prefer not to use `deploy.sh`:
+
+```bash
+docker compose up --build -d
+docker compose exec flowmesh-api npx prisma migrate deploy
+docker compose exec flowmesh-api yarn db:seed
+docker compose logs -f flowmesh-api
+```
+
+### Stripe webhooks with Docker
+
+The API runs at `http://localhost:5555`. On the **host**, still run:
+
+```bash
+stripe listen --forward-to localhost:5555/payments/webhook
+```
+
+Set `STRIPE_WEBHOOK_SECRET` in `.env` to the CLI secret, then `./deploy.sh --restart`.
+
+---
+
 ## Verifying the Full Order Flow
 
 ### 1. Register and login
@@ -377,6 +453,16 @@ Use your platform's secret manager (AWS Secrets Manager, Vault, etc.) — do not
 
 ### 3. Database migrations
 
+**Docker Compose:**
+
+```bash
+./deploy.sh --migrate
+# or migrations only:
+./deploy.sh --migrate-only
+```
+
+**Bare metal / Render:**
+
 Run once per deploy (or as a release step):
 
 ```bash
@@ -399,34 +485,48 @@ Do **not** use `stripe listen` in production.
 
 ### 5. Run processes
 
-The app currently has no `build` script — processes run via `tsx`. For production you can:
-
-**Option A — Run with tsx (simple):**
+**Option A — Docker Compose (recommended for VPS/self-hosted):**
 
 ```bash
-# API
-NODE_ENV=production tsx src/server.ts
+./deploy.sh              # rebuild app images and start/update stack
+./deploy.sh --pull --migrate   # release workflow on a server
+```
 
-# Workers (separate processes)
+See [Docker Compose & deploy.sh](#docker-compose--deploysh).
+
+**Option B — Compiled Node (PM2, systemd, Render):**
+
+```bash
+yarn build
+yarn start                    # API + workers (combined entry: dist/src/index.js)
+# Or split workers:
+yarn worker:payment
+yarn worker:shipment
+```
+
+**Option C — tsx (simple local prod test):**
+
+```bash
+NODE_ENV=production tsx src/server.ts
 NODE_ENV=production tsx src/workers/paymentWorker.ts
 NODE_ENV=production tsx src/workers/shipmentWorker.ts
 ```
 
-**Option B — Process manager (recommended):**
+**Option D — Process manager (PM2 example):**
 
 Use PM2, systemd, Kubernetes, or your platform's worker model. Example PM2 `ecosystem.config.cjs`:
 
 ```javascript
 module.exports = {
   apps: [
-    { name: "flowmesh-api", script: "tsx", args: "src/server.ts", instances: 1 },
-    { name: "flowmesh-payment-worker", script: "tsx", args: "src/workers/paymentWorker.ts", instances: 1 },
-    { name: "flowmesh-shipment-worker", script: "tsx", args: "src/workers/shipmentWorker.ts", instances: 1 },
+    { name: "flowmesh-api", script: "node", args: "dist/src/index.js", instances: 1 },
+    { name: "flowmesh-payment-worker", script: "node", args: "dist/src/workers/paymentWorker.js", instances: 1 },
+    { name: "flowmesh-shipment-worker", script: "node", args: "dist/src/workers/shipmentWorker.js", instances: 1 },
   ],
 };
 ```
 
-Run all three processes in production. A single API instance without workers will accept orders but **will not** advance payment/shipment status after webhooks.
+Run all three processes in production when using split workers. A single API instance without workers will accept orders but **will not** advance payment/shipment status after webhooks.
 
 ### 6. CORS and cookies
 
@@ -436,14 +536,21 @@ Run all three processes in production. A single API instance without workers wil
 
 ### 7. Health and monitoring
 
-The API does not expose a health endpoint yet. Monitor:
+The API exposes health endpoints (not rate-limited):
 
-- API process (port `5555`)
-- Payment and shipment worker logs
-- Redis connectivity
-- PostgreSQL connectivity
+| Endpoint | Purpose | Success |
+|----------|---------|---------|
+| `GET /health` | Liveness | `200 { "status": "ok" }` |
+| `GET /ready` | Readiness (DB + Redis) | `200 { "status": "ready", "checks": { ... } }` |
+
+Use `/health` for simple uptime probes. Use `/ready` before sending traffic or after deploys — returns `503` if Postgres or Redis is down.
+
+Also monitor:
+
+- Payment and shipment worker logs (`./deploy.sh --logs` or your log aggregator)
 - Stripe webhook delivery in Dashboard → Webhooks → event log
 - Failed BullMQ jobs (consider adding Bull Board or Redis inspection)
+- Docker health status: `./deploy.sh --status` or `docker compose ps`
 
 ### 8. Graceful shutdown
 
@@ -452,12 +559,13 @@ Workers do not yet handle `SIGTERM` for in-flight jobs. On deploy, allow a short
 ### 9. Production deploy checklist
 
 - [ ] PostgreSQL running, `DATABASE_URL` set
-- [ ] Redis running, `REDIS_HOST` / `REDIS_PORT` set
-- [ ] `npx prisma migrate deploy` completed
-- [ ] Products seeded (`yarn db:seed`) if needed
-- [ ] API process running (`tsx src/server.ts`)
+- [ ] Redis running, `REDIS_HOST` / `REDIS_PORT` (or `REDIS_URL`) set
+- [ ] `npx prisma migrate deploy` completed (or `./deploy.sh --migrate`)
+- [ ] Products seeded (`yarn db:seed` or `./deploy.sh --seed`) if needed
+- [ ] API process running (`yarn start`, Docker, or PM2)
 - [ ] Payment worker running
 - [ ] Shipment worker running
+- [ ] `GET /ready` returns `200` with database and redis checks ok
 - [ ] Stripe live keys configured
 - [ ] Stripe Dashboard webhook pointing to `/payments/webhook`
 - [ ] `STRIPE_WEBHOOK_SECRET` matches Dashboard endpoint
@@ -530,12 +638,14 @@ npx prisma generate
 
 | Process | Command | Notes |
 |---------|---------|-------|
-| API | `NODE_ENV=production tsx src/server.ts` | Behind HTTPS reverse proxy |
-| Payment worker | `NODE_ENV=production tsx src/workers/paymentWorker.ts` | Always on |
-| Shipment worker | `NODE_ENV=production tsx src/workers/shipmentWorker.ts` | Always on |
+| Full stack (Docker) | `./deploy.sh --pull --migrate` | Rebuilds API + workers; see [Docker Compose & deploy.sh](#docker-compose--deploysh) |
+| API | `yarn start` or `node dist/src/index.js` | Combined entry includes workers on Render; split on Docker/PM2 |
+| Payment worker | `yarn worker:payment` | Always on (separate container/process) |
+| Shipment worker | `yarn worker:shipment` | Always on (separate container/process) |
 | Stripe | Dashboard webhook | No CLI in prod |
 | PostgreSQL | managed instance | `migrate deploy` on release |
 | Redis | managed instance | Required for BullMQ |
+| Health | `GET /ready` | Confirm DB + Redis before routing traffic |
 
 ---
 

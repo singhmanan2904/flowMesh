@@ -56,15 +56,19 @@ flowMesh/
 ├── src/
 │   ├── server.ts                # Fastify entry point (port 5555)
 │   ├── api/
-│   │   ├── routes/              # authRouter, ordersRouter, shipmentRouter
+│   │   ├── DockerFile           # API multi-stage image
+│   │   ├── routes/              # authRouter, ordersRouter, shipmentRouter, healthRouter
 │   │   ├── controllers/         # order, shipment (payment controller is empty)
 │   │   ├── middlewares/         # JWT auth hook
 │   │   └── services/            # createOrder, createPayment
 │   ├── queue/                   # paymentQueue, shipmentQueue (BullMQ)
 │   ├── workers/                 # paymentWorker (stub), shipmentWorker (working)
+│   │   └── DockerFile           # Worker multi-stage image
 │   ├── schema/                  # Fastify JSON Schema validation
 │   ├── types/                   # Fastify request augmentation (userId)
 │   └── generated/prisma/        # Prisma client output (gitignored)
+├── docker-compose.yml           # Full stack (Postgres, Redis, API, workers, logging)
+├── deploy.sh                    # Docker Compose deploy helper
 ├── plan.md                      # Intended architecture (not fully built)
 ├── prisma.config.ts
 ├── tsconfig.json
@@ -148,11 +152,11 @@ stateDiagram-v2
 
 ### DevOps & DX
 
-14. **No README** — no setup docs, env var list, or how to run Redis/Postgres/workers together.
+14. **No README** — addressed in repo root (`README.md`, `INSTRUCTIONS.md`).
 15. **No tests** — `npm test` is a stub; no unit or integration tests.
-16. **No Docker Compose** — Redis and Postgres must be run manually; no one-command local dev.
-17. **No health/readiness endpoints** — hard to monitor API, DB, or Redis connectivity.
-18. **No graceful worker shutdown** — workers lack SIGTERM handling (unlike the API server).
+16. **Docker Compose** — full stack via `docker-compose.yml` + `deploy.sh` (build, migrate, restart, logs).
+17. **Health/readiness endpoints** — `GET /health` (liveness) and `GET /ready` (DB + Redis); Compose healthcheck uses `/ready`.
+18. **No graceful worker shutdown** — workers lack SIGTERM handling (unlike the combined entry in `src/index.ts`).
 
 ### Suggested Priority Improvements
 
@@ -161,13 +165,13 @@ stateDiagram-v2
 | High     | Finish payment worker + enqueue payment jobs; sync `Orders.status` with payment/shipment events |
 | High     | Add order ownership checks on shipment routes |
 | High     | Remove secret logging; fix auth error status codes |
-| Medium   | Add README + `.env.example` + `docker-compose.yml` (Postgres + Redis) |
 | Medium   | Centralized error middleware + consistent Pino logging |
 | Medium   | Add tests for auth, order creation, and worker job handling |
 | Low      | Align codebase with `plan.md` (domain modules, repositories) or update the plan to match reality |
+| Low      | Wire up `prom-client` metrics; add Bull Board for queue visibility |
 
 ---
 
 ## Bottom Line
 
-flowMesh is a solid skeleton for an **async order-fulfillment pipeline** — auth, transactional order creation, and a working shipment worker chain are in place. The main gap is that **payment processing and order state transitions are unfinished**, and production concerns (security hardening, tests, docs, deployment) are largely absent. It reads as an early-stage prototype with a clear direction in `plan.md` that still needs to be implemented.
+flowMesh is a solid skeleton for an **async order-fulfillment pipeline** — auth, transactional order creation, and a working shipment worker chain are in place. The main gap is that **payment processing and order state transitions are unfinished**, and production concerns (security hardening, tests) are still largely absent. Docker Compose, multi-stage images, health endpoints, and `deploy.sh` cover basic deployment and monitoring; it still reads as an early-stage prototype with a clear direction in `plan.md` that needs to be implemented.
