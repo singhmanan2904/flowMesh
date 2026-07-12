@@ -1,18 +1,11 @@
 import "dotenv/config";
 import logger from "../logger/logger.js";
-import { paymentWorker } from "./workers/paymentWorker.js";
-import { shipmentWorker } from "./workers/shipmentWorker.js";
 import { startServer } from "./server.js";
-
-// Render deploys a single web service with no separate worker process, so BullMQ
-// workers run alongside the API in one Node process. Split into a dedicated worker
-// service when using a vps or cloud provider.
 
 let server: Awaited<ReturnType<typeof startServer>> | undefined;
 
 async function shutdown(signal: string) {
-    logger.info({ signal }, "Shutting down");
-    await Promise.all([paymentWorker.close(), shipmentWorker.close()]);
+    logger.info({ signal }, "Shutting down API");
     if (server) {
         await server.close();
     }
@@ -30,10 +23,9 @@ async function shutdown(signal: string) {
 
 async function main() {
     server = await startServer();
-    logger.info("BullMQ workers started (payment, shipment)");
 }
 
 main().catch((err) => {
-    logger.error({ err }, "Application failed to start");
+    logger.error({ err }, "API failed to start");
     process.exit(1);
 });

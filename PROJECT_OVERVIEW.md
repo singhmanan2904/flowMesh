@@ -54,6 +54,7 @@ flowMesh/
 │   ├── schema.prisma            # DB models & enums
 │   └── migrations/              # 6 migrations (users → orders → payment → shipment)
 ├── src/
+│   ├── api.ts                   # API entry (HTTP server only)
 │   ├── server.ts                # Fastify entry point (port 5555)
 │   ├── api/
 │   │   ├── DockerFile           # API multi-stage image
@@ -156,7 +157,7 @@ stateDiagram-v2
 15. **No tests** — `npm test` is a stub; no unit or integration tests.
 16. **Docker Compose** — full stack via `docker-compose.yml` + `deploy.sh` (build, migrate, restart, logs).
 17. **Health/readiness endpoints** — `GET /health` (liveness) and `GET /ready` (DB + Redis); Compose healthcheck uses `/ready`.
-18. **No graceful worker shutdown** — workers lack SIGTERM handling (unlike the combined entry in `src/index.ts`).
+18. **No graceful worker shutdown** — workers lack SIGTERM handling (API entry in `src/api.ts` handles shutdown for HTTP only).
 
 ### Suggested Priority Improvements
 

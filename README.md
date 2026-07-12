@@ -385,7 +385,7 @@ flowMesh-backend/
 │   ├── migrations/           # Prisma migrations
 │   └── seed.ts               # Product catalog seed (6 products)
 ├── src/
-│   ├── index.ts              # Combined entry: API + both workers (Render deploy)
+│   ├── api.ts                # API entry (HTTP server only)
 │   ├── server.ts             # Fastify app setup (routes, CORS, rate limit)
 │   ├── api/
 │   │   ├── DockerFile        # API multi-stage container image
@@ -422,13 +422,15 @@ flowMesh-backend/
 
 | Script | Purpose |
 |--------|---------|
-| `yarn dev` | Start API + workers together in watch mode (`tsx watch src/index.ts`) |
+| `yarn dev` | Start API in watch mode (`tsx watch src/api.ts`) |
+| `yarn dev:worker:payment` | Start payment worker in watch mode |
+| `yarn dev:worker:shipment` | Start shipment worker in watch mode |
 | `yarn build` | Compile TypeScript to `dist/` |
-| `yarn start` | Run compiled combined app (`node dist/src/index.js`) |
+| `yarn start` | Run compiled API (`node dist/src/api.js`) |
 | `yarn worker:payment` | Start payment worker only (requires `yarn build` first) |
 | `yarn worker:shipment` | Start shipment worker only (requires `yarn build` first) |
 | `yarn db:seed` | Seed product catalog |
-| `yarn render:build` | `prisma generate && yarn build` (Render deploy hook) |
+| `yarn render:build` | `prisma generate && yarn build` (platform build hook) |
 
 Database migrations:
 
@@ -479,12 +481,10 @@ yarn install
 npx prisma migrate dev
 yarn db:seed
 
-# Single process: API + both workers (watch mode)
-yarn dev
-
-# Or split into separate terminals after `yarn build`:
-# Terminal 2 — Payment worker:  yarn worker:payment
-# Terminal 3 — Shipment worker: yarn worker:shipment
+# Run in separate terminals:
+yarn dev                      # Terminal 1 — API
+yarn dev:worker:payment       # Terminal 2 — payment worker
+yarn dev:worker:shipment      # Terminal 3 — shipment worker
 
 # Stripe webhook forwarding (required for payment status updates)
 stripe listen --forward-to localhost:5555/payments/webhook
@@ -576,23 +576,25 @@ When `--migrate` is used, the script waits for Postgres and the API `/ready` end
 
 ## Deployment Models
 
-### Combined process (default)
+API and workers always run as **separate processes** — locally, on Docker Compose, or on a VPS.
 
-`src/index.ts` starts the Fastify server **and** both BullMQ workers in one Node process. This is the default for platforms like **Render** that deploy a single web service without separate worker dynos.
+| Process | Dev command | Production command |
+|---------|-------------|-------------------|
+| API | `yarn dev` | `yarn start` or `node dist/src/api.js` |
+| Payment worker | `yarn dev:worker:payment` | `yarn worker:payment` |
+| Shipment worker | `yarn dev:worker:shipment` | `yarn worker:shipment` |
 
-Graceful shutdown closes workers first, then the HTTP server, on `SIGINT` / `SIGTERM`.
+### Docker Compose
 
-### Split workers (Docker Compose / production)
-
-Docker Compose runs three separate containers:
+Three separate app containers:
 
 | Container | Command |
 |-----------|---------|
-| `flowmesh-api` | `node dist/src/index.js` |
+| `flowmesh-api` | `node dist/src/api.js` |
 | `flowmesh-payment-worker` | `node dist/src/workers/paymentWorker.js` |
 | `flowmesh-shipment-worker` | `node dist/src/workers/shipmentWorker.js` |
 
-Use split workers when you want independent scaling and restart isolation.
+The API container runs HTTP only. Workers scale and restart independently. The API handles graceful shutdown on `SIGINT` / `SIGTERM`; run all three processes in production — the API alone will accept orders but will not process payment/shipment jobs.
 
 ---
 

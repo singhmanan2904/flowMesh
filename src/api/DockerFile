@@ -48,4 +48,4 @@ USER flowmesh
 
 EXPOSE 5555
 
-CMD ["node", "dist/src/index.js"]
+CMD ["node", "dist/src/api.js"]

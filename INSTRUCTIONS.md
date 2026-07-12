@@ -498,8 +498,7 @@ See [Docker Compose & deploy.sh](#docker-compose--deploysh).
 
 ```bash
 yarn build
-yarn start                    # API + workers (combined entry: dist/src/index.js)
-# Or split workers:
+yarn start                    # API only
 yarn worker:payment
 yarn worker:shipment
 ```
@@ -519,7 +518,7 @@ Use PM2, systemd, Kubernetes, or your platform's worker model. Example PM2 `ecos
 ```javascript
 module.exports = {
   apps: [
-    { name: "flowmesh-api", script: "node", args: "dist/src/index.js", instances: 1 },
+    { name: "flowmesh-api", script: "node", args: "dist/src/api.js", instances: 1 },
     { name: "flowmesh-payment-worker", script: "node", args: "dist/src/workers/paymentWorker.js", instances: 1 },
     { name: "flowmesh-shipment-worker", script: "node", args: "dist/src/workers/shipmentWorker.js", instances: 1 },
   ],
@@ -627,8 +626,8 @@ npx prisma generate
 | # | Terminal | Command | Required for |
 |---|----------|---------|--------------|
 | 1 | API | `yarn dev` | HTTP API |
-| 2 | Payment worker | `yarn worker:payment` | Payment status updates |
-| 3 | Shipment worker | `yarn worker:shipment` | Shipment status updates |
+| 2 | Payment worker | `yarn dev:worker:payment` | Payment status updates |
+| 3 | Shipment worker | `yarn dev:worker:shipment` | Shipment status updates |
 | 4 | Stripe CLI | `stripe listen --forward-to localhost:5555/payments/webhook` | Payment webhooks |
 | — | PostgreSQL | running | Database |
 | — | Redis | running | Job queue |
@@ -639,7 +638,7 @@ npx prisma generate
 | Process | Command | Notes |
 |---------|---------|-------|
 | Full stack (Docker) | `./deploy.sh --pull --migrate` | Rebuilds API + workers; see [Docker Compose & deploy.sh](#docker-compose--deploysh) |
-| API | `yarn start` or `node dist/src/index.js` | Combined entry includes workers on Render; split on Docker/PM2 |
+| API | `yarn start` or `node dist/src/api.js` | HTTP only — run workers separately |
 | Payment worker | `yarn worker:payment` | Always on (separate container/process) |
 | Shipment worker | `yarn worker:shipment` | Always on (separate container/process) |
 | Stripe | Dashboard webhook | No CLI in prod |
